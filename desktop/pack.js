@@ -6,10 +6,6 @@ const fs = require('fs')
 const out = process.argv[2] || 'dist'
 const version = process.env.APP_VERSION || require('./package.json').version
 
-// 共用的廣告規則和注入腳本在上一層，打包前複製進來
-fs.rmSync(path.join(__dirname, 'shared'), { recursive: true, force: true })
-fs.cpSync(path.join(__dirname, '..', 'shared'), path.join(__dirname, 'shared'), { recursive: true })
-
 packager({
   dir: __dirname,
   name: 'VidHub',

@@ -1,22 +1,20 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, session, shell } = require('electron')
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron')
 const path = require('path')
 const site = require('./site')
+const source = require('./source')
+const state = require('./state')
 const updater = require('./updater')
 
 const APP_NAME = 'VidHub'
-// 用一般 Chrome 的 UA，網站對 Electron 字樣的 UA 可能會擋
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
-app.userAgentFallback = UA
+app.userAgentFallback = source.UA
 
-// 看過的影片片段不存磁碟快取，userData 才不會越看越大（同一次執行裡還是有記憶體快取）
+// 看過的縮圖和影片片段不存磁碟快取，userData 才不會越看越大（同一次執行裡還是有記憶體快取）
 app.commandLine.appendSwitch('disable-http-cache')
 
-let win = null
-let settingsWin = null
+// 播放用的 vh:// 代理要在 app ready 之前登記
+source.registerScheme()
 
-function home() {
-  win.loadURL(site.base() + '/home')
-}
+let win = null
 
 function createWindow() {
   const b = site.get('bounds') || {}
@@ -25,187 +23,84 @@ function createWindow() {
     height: b.height || 900,
     x: b.x,
     y: b.y,
-    minWidth: 480,
-    minHeight: 400,
+    minWidth: 900,
+    minHeight: 600,
     backgroundColor: '#0f0f13',
     title: APP_NAME,
     icon: path.join(__dirname, 'icon.png'),
+    autoHideMenuBar: true,
     show: process.env.VIDHUB_TEST !== '1',
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(__dirname, 'preload.js') },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   })
+  win.removeMenu()
   if (b.maximized) win.maximize()
+  win.loadFile(path.join(__dirname, 'src', 'index.html'))
+
   const wc = win.webContents
-
-  // 視窗標題不顯示網站名稱：「影片名稱 - 網站名…」只留前面
-  win.on('page-title-updated', (e, title) => {
-    e.preventDefault()
-    const t = String(title || '').split(' - ')[0].trim()
-    win.setTitle(t && !/^https?:/.test(t) ? `${t} - ${APP_NAME}` : APP_NAME)
-  })
-
-  // 清廣告的腳本由 preload.js 在網頁一開始就注入；這裡是備案（腳本自己會避免重複執行）
-  wc.on('dom-ready', () => wc.executeJavaScript(site.injectJs).catch(() => {}))
-
-  // 新分頁一律不開：站內網址就在目前視窗開，站外的（彈出式廣告）直接擋掉
+  // 介面裡沒有要開新視窗的地方；萬一有就用系統瀏覽器
   wc.setWindowOpenHandler(({ url }) => {
-    try {
-      if (site.isSite(new URL(url).hostname)) wc.loadURL(url)
-    } catch {}
+    if (/^https?:/.test(url)) shell.openExternal(url)
     return { action: 'deny' }
   })
-
-  // 站外連結（地址發布頁、社群）先問過再用系統瀏覽器開，避免廣告自己跳轉出去
-  wc.on('will-navigate', (e, url) => {
-    let u
-    try {
-      u = new URL(url)
-    } catch {
-      return
-    }
-    if (site.isSite(u.hostname)) return
+  wc.on('will-navigate', (e) => e.preventDefault())
+  wc.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown') return
+    if (input.key === 'F12') wc.toggleDevTools()
+    else if (input.key === 'F11') win.setFullScreen(!win.isFullScreen())
+    else if (input.key === 'F5') wc.reload()
+    else if (input.control && (input.key === '=' || input.key === '+')) wc.setZoomLevel(wc.getZoomLevel() + 0.5)
+    else if (input.control && input.key === '-') wc.setZoomLevel(wc.getZoomLevel() - 0.5)
+    else if (input.control && input.key === '0') wc.setZoomLevel(0)
+    else return
     e.preventDefault()
-    if (!/^https?:$/.test(u.protocol)) return
-    const r = dialog.showMessageBoxSync(win, { type: 'question', title: APP_NAME, message: '要用瀏覽器開啟這個站外網址嗎？', detail: url, buttons: ['開啟', '取消'], defaultId: 1, cancelId: 1 })
-    if (r === 0) shell.openExternal(url)
   })
-  wc.on('will-redirect', (e, url) => {
-    try {
-      if (!site.isSite(new URL(url).hostname)) e.preventDefault()
-    } catch {}
-  })
-
-  wc.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
-    // -3 = 被中斷（換頁、擋掉的請求），不算失敗
-    if (!isMainFrame || code === -3) return
-    const r = dialog.showMessageBoxSync(win, {
-      type: 'warning',
-      title: APP_NAME,
-      message: '無法連線到網站',
-      detail: `${desc}（${code}）\n\n網站可能換了網址，可以到「設定 → 網址設定」改成新網址。`,
-      buttons: ['重試', '網址設定', '關閉'],
-      defaultId: 0,
-      cancelId: 2,
-    })
-    if (r === 0) wc.loadURL(url)
-    else if (r === 1) openSettings()
-  })
-
-  // 滑鼠側鍵上一頁 / 下一頁
+  // 滑鼠側鍵：交給介面處理「上一步」
   win.on('app-command', (_e, cmd) => {
-    if (cmd === 'browser-backward' && wc.canGoBack()) wc.goBack()
-    if (cmd === 'browser-forward' && wc.canGoForward()) wc.goForward()
+    if (cmd === 'browser-backward') wc.send('nav:back')
   })
 
   win.on('close', () => {
     const maximized = win.isMaximized()
     site.set('bounds', { ...(maximized ? site.get('bounds') : win.getNormalBounds()), maximized })
   })
-
-  home()
-}
-
-function buildMenu() {
-  const wc = () => win.webContents
-  const template = [
-    {
-      label: '導覽',
-      submenu: [
-        { label: '首頁', accelerator: 'Alt+Home', click: home },
-        { label: '上一頁', accelerator: 'Alt+Left', click: () => wc().canGoBack() && wc().goBack() },
-        { label: '下一頁', accelerator: 'Alt+Right', click: () => wc().canGoForward() && wc().goForward() },
-        { type: 'separator' },
-        { label: '重新整理', accelerator: 'F5', click: () => wc().reload() },
-        { label: '強制重新整理', accelerator: 'Ctrl+F5', click: () => wc().reloadIgnoringCache() },
-        { type: 'separator' },
-        { label: '結束', accelerator: 'Alt+F4', role: 'quit' },
-      ],
-    },
-    {
-      label: '檢視',
-      submenu: [
-        { label: '全螢幕', accelerator: 'F11', click: () => win.setFullScreen(!win.isFullScreen()) },
-        { type: 'separator' },
-        { label: '放大', accelerator: 'Ctrl+=', click: () => wc().setZoomLevel(wc().getZoomLevel() + 0.5) },
-        { label: '縮小', accelerator: 'Ctrl+-', click: () => wc().setZoomLevel(wc().getZoomLevel() - 0.5) },
-        { label: '原始大小', accelerator: 'Ctrl+0', click: () => wc().setZoomLevel(0) },
-        { type: 'separator' },
-        { label: '開發人員工具', accelerator: 'F12', click: () => wc().toggleDevTools() },
-      ],
-    },
-    {
-      label: '設定',
-      submenu: [
-        { label: '網址設定…', click: openSettings },
-        { label: '檢查更新', click: () => checkUpdate(true) },
-        { type: 'separator' },
-        {
-          label: '關於',
-          click: () =>
-            dialog.showMessageBox(win, { type: 'info', title: APP_NAME, message: `${APP_NAME} v${app.getVersion()}`, detail: '已內建廣告攔截。\n網站換網址時，到「設定 → 網址設定」修改即可。' }),
-        },
-      ],
-    },
-  ]
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
-}
-
-// ---------- 網址設定 ----------
-function openSettings() {
-  if (settingsWin && !settingsWin.isDestroyed()) return settingsWin.focus()
-  settingsWin = new BrowserWindow({
-    parent: win,
-    modal: true,
-    width: 480,
-    height: 260,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    title: '網址設定',
-    backgroundColor: '#1a1a20',
-    webPreferences: { preload: path.join(__dirname, 'settings-preload.js'), contextIsolation: true, sandbox: false },
-  })
-  settingsWin.removeMenu()
-  settingsWin.loadFile(path.join(__dirname, 'settings.html'))
 }
 
 function setupIpc() {
-  // preload.js 同步取得要注入的腳本；只給網站本身的頁面
-  ipcMain.on('inject:get', (e) => {
-    let ok = false
-    try {
-      ok = site.isSite(new URL(e.senderFrame.url).hostname)
-    } catch {}
-    e.returnValue = ok ? site.injectJs : ''
-  })
-  ipcMain.handle('settings:get', () => ({ base: site.base(), isDefault: !site.get('base') }))
-  ipcMain.handle('settings:save', (_e, input) => {
-    const base = input ? site.normalizeBase(input) : ''
-    site.set('base', base === site.DEFAULT_BASE ? '' : base)
-    if (settingsWin && !settingsWin.isDestroyed()) settingsWin.close()
-    home()
+  ipcMain.handle('site:page', (_e, p) => source.page(String(p)))
+  ipcMain.handle('site:base', () => ({ base: site.base(), isDefault: !site.get('base') }))
+  ipcMain.handle('site:setBase', (_e, input) => {
+    const b = input ? site.normalizeBase(input) : ''
+    site.set('base', b === site.DEFAULT_BASE ? '' : b)
     return site.base()
   })
-  ipcMain.handle('settings:close', () => settingsWin && !settingsWin.isDestroyed() && settingsWin.close())
+  ipcMain.handle('shell:external', (_e, url) => /^https?:/.test(url) && shell.openExternal(url))
+  ipcMain.handle('win:fullscreen', (_e, on) => {
+    if (win && !win.isDestroyed()) win.setFullScreen(on === undefined ? !win.isFullScreen() : !!on)
+    return win?.isFullScreen() || false
+  })
+  ipcMain.handle('app:version', () => app.getVersion())
+  ipcMain.handle('update:check', () => checkUpdate(true))
 }
 
 // ---------- 程式內更新 ----------
 let updating = false
 
+/** 回傳 'latest' | 'shown' | 'error' | 'busy' */
 async function checkUpdate(manual = false) {
-  if (updating) return
+  if (updating) return 'busy'
   let r
   try {
     r = await updater.latest()
   } catch (e) {
     if (manual) dialog.showMessageBox(win, { type: 'error', title: APP_NAME, message: '檢查更新失敗', detail: String(e.message || e) })
-    return
+    return 'error'
   }
   const now = updater.currentCode()
   if (!r || r.code <= now) {
     if (manual) dialog.showMessageBox(win, { type: 'info', title: APP_NAME, message: '已經是最新版本', detail: `目前版本 v${app.getVersion()}` })
-    return
+    return 'latest'
   }
-  if (!manual && site.get('skipVersion') === r.code) return
+  if (!manual && site.get('skipVersion') === r.code) return 'latest'
   const choice = dialog.showMessageBoxSync(win, {
     type: 'info',
     title: APP_NAME,
@@ -216,8 +111,11 @@ async function checkUpdate(manual = false) {
     cancelId: 1,
   })
   if (choice === 2) site.set('skipVersion', r.code)
-  if (choice !== 0) return
-  if (!updater.supported()) return shell.openExternal(r.url)
+  if (choice !== 0) return 'shown'
+  if (!updater.supported()) {
+    shell.openExternal(r.url)
+    return 'shown'
+  }
 
   updating = true
   try {
@@ -231,9 +129,13 @@ async function checkUpdate(manual = false) {
     updater.install()
   } catch (e) {
     updating = false
-    if (!win.isDestroyed()) win.setProgressBar(-1)
+    if (!win.isDestroyed()) {
+      win.setProgressBar(-1)
+      win.setTitle(APP_NAME)
+    }
     dialog.showMessageBox(win, { type: 'error', title: APP_NAME, message: '更新失敗', detail: String(e.message || e) })
   }
+  return 'shown'
 }
 
 // 同時只開一份：再開一次就把原本的視窗叫到前面
@@ -247,12 +149,10 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(() => {
-    // 廣告攔截：主程序的請求（檢查更新）也會經過這裡，GitHub 在規則的白名單裡
-    session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, cb) => {
-      cb({ cancel: site.shouldBlock(details.url) })
-    })
+    Menu.setApplicationMenu(null)
+    state.setup()
+    source.setupProtocol()
     setupIpc()
-    buildMenu()
     createWindow()
     updater.cleanup()
     if (process.env.VIDHUB_TEST !== '1') setTimeout(() => checkUpdate(false), 5000)

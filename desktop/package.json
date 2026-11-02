@@ -2,7 +2,7 @@
   "name": "vidhub-desktop",
   "productName": "VidHub",
   "version": "1.0.0",
-  "description": "影片網站的桌面版（擋廣告、程式內更新）",
+  "description": "影片瀏覽與播放的桌面版（自己的介面，不載入網站廣告）",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -12,5 +12,8 @@
   "devDependencies": {
     "@electron/packager": "18.4.4",
     "electron": "33.4.11"
+  },
+  "dependencies": {
+    "hls.js": "1.5.17"
   }
 }
