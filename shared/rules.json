@@ -1,0 +1,15 @@
+{
+  "comment": "廣告攔截規則（電腦版、手機版、電視版共用）。站內網域以外的請求，只有符合 allow 規則的才放行。",
+  "allowHosts": [
+    "fonts.googleapis.com",
+    "fonts.gstatic.com",
+    "challenges.cloudflare.com",
+    "api.github.com",
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com"
+  ],
+  "allowHostSuffixes": [],
+  "allowPathPrefixes": ["/hls/", "/m/"],
+  "blockSitePaths": ["/js/", "/api/hop/", "/cdn-cgi/rum", "/assets/vast-client"]
+}

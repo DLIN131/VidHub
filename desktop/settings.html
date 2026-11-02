@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>網址設定</title>
+    <style>
+      body { margin: 0; padding: 20px; background: #1a1a20; color: #eee; font: 14px 'Microsoft JhengHei UI', sans-serif; }
+      p { margin: 0 0 10px; color: #aaa; line-height: 1.5; }
+      input { width: 100%; box-sizing: border-box; padding: 9px 10px; border-radius: 6px; border: 1px solid #444; background: #101014; color: #fff; font-size: 15px; }
+      input:focus { outline: 2px solid #f59e0b; border-color: transparent; }
+      .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+      button { padding: 7px 16px; border-radius: 6px; border: 0; background: #33333b; color: #eee; font-size: 14px; cursor: pointer; }
+      button.primary { background: #f59e0b; color: #111; font-weight: bold; }
+      button:hover { filter: brightness(1.15); }
+      .left { margin-right: auto; }
+    </style>
+  </head>
+  <body>
+    <p>網站換網址時，把新網址貼在這裡（例如 https://example.com）。</p>
+    <input id="base" spellcheck="false" autofocus />
+    <div class="row">
+      <button id="reset" class="left">還原預設</button>
+      <button id="cancel">取消</button>
+      <button id="save" class="primary">儲存並開啟</button>
+    </div>
+    <script>
+      const input = document.getElementById('base')
+      window.settings.get().then((s) => {
+        input.value = s.base
+        input.select()
+      })
+      const save = () => window.settings.save(input.value).catch((e) => alert('網址格式不正確：' + e.message))
+      document.getElementById('save').onclick = save
+      document.getElementById('reset').onclick = () => window.settings.save('')
+      document.getElementById('cancel').onclick = () => window.settings.close()
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') save()
+        if (e.key === 'Escape') window.settings.close()
+      })
+    </script>
+  </body>
+</html>

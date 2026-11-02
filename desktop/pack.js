@@ -1,0 +1,38 @@
+// 打包 Windows 版：node pack.js [輸出資料夾]
+const { packager } = require('@electron/packager')
+const path = require('path')
+const fs = require('fs')
+
+const out = process.argv[2] || 'dist'
+const version = process.env.APP_VERSION || require('./package.json').version
+
+// 共用的廣告規則和注入腳本在上一層，打包前複製進來
+fs.rmSync(path.join(__dirname, 'shared'), { recursive: true, force: true })
+fs.cpSync(path.join(__dirname, '..', 'shared'), path.join(__dirname, 'shared'), { recursive: true })
+
+packager({
+  dir: __dirname,
+  name: 'VidHub',
+  platform: 'win32',
+  arch: 'x64',
+  out,
+  overwrite: true,
+  asar: true,
+  icon: path.join(__dirname, 'icon.ico'),
+  appVersion: version,
+  win32metadata: { CompanyName: 'VidHub', FileDescription: 'VidHub', ProductName: 'VidHub' },
+  // 只排除專案根目錄的東西（路徑以 / 開頭、相對於專案資料夾）
+  ignore: [/^\/dist($|\/)/, /^\/out($|\/)/, /^\/tools($|\/)/, /^\/pack\.js$/, /^\/\.gitignore$/],
+})
+  .then(([appPath]) => {
+    // Chromium 介面語言檔只留中文和英文（其他語言約 40 MB，程式用不到）
+    const keep = new Set(['en-US.pak', 'zh-TW.pak', 'zh-CN.pak'])
+    const locales = path.join(appPath, 'locales')
+    for (const f of fs.readdirSync(locales)) if (!keep.has(f)) fs.rmSync(path.join(locales, f))
+    fs.writeFileSync(path.join(appPath, 'version.txt'), version)
+    console.log(`打包完成：${appPath}（v${version}）`)
+  })
+  .catch((err) => {
+    console.error(err)
+    process.exit(1)
+  })
