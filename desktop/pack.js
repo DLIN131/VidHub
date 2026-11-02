@@ -20,6 +20,17 @@ packager({
   asar: true,
   icon: path.join(__dirname, 'icon.ico'),
   appVersion: version,
+  // 程式裡的 app.getVersion() 讀的是打包進去的 package.json，不是 exe 的版本資訊；
+  // 沒改的話裝完新版還是顯示舊版本號，更新視窗會一直跳出來
+  afterCopy: [
+    (buildPath, _electronVersion, _platform, _arch, done) => {
+      const file = path.join(buildPath, 'package.json')
+      const pkg = JSON.parse(fs.readFileSync(file, 'utf8'))
+      pkg.version = version
+      fs.writeFileSync(file, JSON.stringify(pkg, null, 2))
+      done()
+    },
+  ],
   win32metadata: { CompanyName: 'VidHub', FileDescription: 'VidHub', ProductName: 'VidHub' },
   // 只排除專案根目錄的東西（路徑以 / 開頭、相對於專案資料夾）
   ignore: [/^\/dist($|\/)/, /^\/out($|\/)/, /^\/tools($|\/)/, /^\/pack\.js$/, /^\/\.gitignore$/],

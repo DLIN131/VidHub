@@ -53,6 +53,14 @@ a:focus, button:focus, input:focus, [tabindex]:focus, [role="button"]:focus {
       const li = a.closest('li')
       hide(li || a)
     }
+    // 頁尾清單裡的站外連結（姊妹站、廣告合作）；「地址發布」留著，網站換網址時要靠它找新網址
+    for (const a of document.querySelectorAll('li > a[href^="http"]')) {
+      if (a.host !== location.host && !a.textContent.includes('地址')) hide(a.parentElement)
+    }
+    // 「商務合作」整塊（廣告合作連結和聯絡信箱）
+    for (const p of document.querySelectorAll('p')) {
+      if (p.textContent.trim() === '商務合作') hide(p.parentElement)
+    }
   }
 
   let queued = false
