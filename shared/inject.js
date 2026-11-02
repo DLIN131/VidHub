@@ -9,6 +9,7 @@
   const css = `
 ${HOP}, a[href="/app-download"], a[href="/fuli"], .rv-player-logo { display: none !important; }
 iframe:not([src^="/"]):not([src^="${location.origin}"]) { display: none !important; }
+[role="dialog"]:has(${HOP}) { display: none !important; }
 ${TV ? `
 a:focus, button:focus, input:focus, [tabindex]:focus, [role="button"]:focus {
   outline: 3px solid #f59e0b !important; outline-offset: 2px !important; border-radius: 6px;
@@ -17,7 +18,7 @@ a:focus, button:focus, input:focus, [tabindex]:focus, [role="button"]:focus {
 ` : ''}`
 
   function addStyle() {
-    if (document.getElementById('__vh_css')) return
+    if (!document.documentElement || document.getElementById('__vh_css')) return
     const s = document.createElement('style')
     s.id = '__vh_css'
     s.textContent = css
@@ -30,14 +31,24 @@ a:focus, button:focus, input:focus, [tabindex]:focus, [role="button"]:focus {
 
   const visible = (el) => el.style.display !== 'none' && el.offsetParent !== null
 
+  let escAt = 0
+
   /** 廣告連結外層的格子：裡面全是廣告就整塊藏起來，整排都空了再往上藏一層 */
   function clean() {
     addStyle()
     for (const a of document.querySelectorAll(HOP)) {
       const dialog = a.closest('[role="dialog"]')
       if (dialog) {
-        // 彈出式廣告視窗：送 Esc 讓網站自己關（直接藏起來會留下鎖住捲動的遮罩）
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
+        // 彈出式廣告視窗：送 Esc 讓網站自己關（直接藏起來會留下鎖住捲動的遮罩）。
+        // 只在畫面被鎖住不能捲動時送；網頁剛開始載入時網站可能還沒接上按鍵，所以每 0.5 秒再送一次（最多約 30 秒）
+        const n = Number(dialog.dataset.vhEsc || 0)
+        const locked = [document.body, document.documentElement].some((e) => e && getComputedStyle(e).overflow === 'hidden')
+        if (locked && n < 60 && Date.now() - escAt > 450) {
+          escAt = Date.now()
+          dialog.dataset.vhEsc = n + 1
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
+          setTimeout(schedule, 500)
+        }
         hide(dialog)
         continue
       }
@@ -75,7 +86,8 @@ a:focus, button:focus, input:focus, [tabindex]:focus, [role="button"]:focus {
 
   function start() {
     clean()
-    new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true })
+    // 網頁一開始就注入（電腦版 preload、Android document start），所以從載入中就開始盯著
+    new MutationObserver(schedule).observe(document, { childList: true, subtree: true })
     if (TV) tvSetup()
   }
 
@@ -251,6 +263,7 @@ a:focus, button:focus, input:focus, [tabindex]:focus, [role="button"]:focus {
     }, 500)
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start)
-  else start()
+  start()
+  // 載入中有些廣告格子是一次整塊出現的，DOMContentLoaded 再補清一次
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', clean)
 })()

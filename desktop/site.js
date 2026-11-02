@@ -8,9 +8,9 @@ const path = require('path')
 const DEFAULT_BASE = Buffer.from('aHR0cHM6Ly9yb3V2YjEueHl6', 'base64').toString()
 
 /** 共用檔案（規則、注入腳本）：打包時 pack.js 會複製到 desktop/shared，開發時讀上一層的 shared */
+// 開發時一定讀上一層：desktop/shared 是打包留下的舊複本，讀到它會測到舊的規則
 function sharedFile(name) {
-  const local = path.join(__dirname, 'shared', name)
-  return fs.existsSync(local) ? local : path.join(__dirname, '..', 'shared', name)
+  return app.isPackaged ? path.join(__dirname, 'shared', name) : path.join(__dirname, '..', 'shared', name)
 }
 
 const rules = JSON.parse(fs.readFileSync(sharedFile('rules.json'), 'utf8'))

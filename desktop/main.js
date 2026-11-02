@@ -31,7 +31,7 @@ function createWindow() {
     title: APP_NAME,
     icon: path.join(__dirname, 'icon.png'),
     show: process.env.VIDHUB_TEST !== '1',
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(__dirname, 'preload.js') },
   })
   if (b.maximized) win.maximize()
   const wc = win.webContents
@@ -43,6 +43,7 @@ function createWindow() {
     win.setTitle(t && !/^https?:/.test(t) ? `${t} - ${APP_NAME}` : APP_NAME)
   })
 
+  // 清廣告的腳本由 preload.js 在網頁一開始就注入；這裡是備案（腳本自己會避免重複執行）
   wc.on('dom-ready', () => wc.executeJavaScript(site.injectJs).catch(() => {}))
 
   // 新分頁一律不開：站內網址就在目前視窗開，站外的（彈出式廣告）直接擋掉
@@ -168,6 +169,14 @@ function openSettings() {
 }
 
 function setupIpc() {
+  // preload.js 同步取得要注入的腳本；只給網站本身的頁面
+  ipcMain.on('inject:get', (e) => {
+    let ok = false
+    try {
+      ok = site.isSite(new URL(e.senderFrame.url).hostname)
+    } catch {}
+    e.returnValue = ok ? site.injectJs : ''
+  })
   ipcMain.handle('settings:get', () => ({ base: site.base(), isDefault: !site.get('base') }))
   ipcMain.handle('settings:save', (_e, input) => {
     const base = input ? site.normalizeBase(input) : ''
