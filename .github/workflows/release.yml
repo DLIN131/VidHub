@@ -84,7 +84,8 @@ jobs:
       - name: Build Windows app
         shell: pwsh
         run: |
-          npm ci --no-audit --no-fund
+          # 用 install 而不是 ci：本機沒裝 Node 時改了 package.json 也能建置（lock 檔由這裡補）
+          npm install --no-audit --no-fund
           $env:APP_VERSION = "1.0.${{ github.run_number }}"
           node pack.js dist
           New-Item -ItemType Directory -Force out | Out-Null

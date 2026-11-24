@@ -130,6 +130,8 @@ fun VideoScreen(route: Route.VideoPage) {
             val resume = Store.position(v.id)
             val queue = d.episodes
             PlayButton(if (resume > 5) "▶  繼續播放（${fmtTime(resume)}）" else "▶  播放") { Nav.push(Route.Player(v, queue, d.series)) }
+            Spacer(Modifier.height(8.dp))
+            DownloadButton(v, Modifier.fillMaxWidth().padding(horizontal = 14.dp))
             Spacer(Modifier.height(12.dp))
             Tags(v.tags) { Nav.push(Route.Tag(it)) }
             d.series?.let { s ->

@@ -8,12 +8,14 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.zip.Inflater
@@ -68,8 +70,11 @@ object Stream {
 
     private val upstream by lazy { OkHttpDataSource.Factory(Api.http).setUserAgent(Site.USER_AGENT) }
 
+    /** 已經下載好的直接播本機檔案（TS 接成的一個檔），沒有才播線上的 */
     fun source(videoId: String): MediaSource =
-        HlsMediaSource.Factory(DataSource.Factory { UnwrapDataSource(upstream.createDataSource()) })
+        Downloads.doneFile(videoId)?.let { f ->
+            ProgressiveMediaSource.Factory(FileDataSource.Factory()).createMediaSource(MediaItem.fromUri(Uri.fromFile(f)))
+        } ?: HlsMediaSource.Factory(DataSource.Factory { UnwrapDataSource(upstream.createDataSource()) })
             .setAllowChunklessPreparation(true)
             .createMediaSource(MediaItem.Builder().setUri(Api.streamUrl(videoId)).setMimeType(MimeTypes.APPLICATION_M3U8).build())
 

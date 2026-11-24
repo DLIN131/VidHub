@@ -96,13 +96,17 @@ const TABS = [
   ['cats', '分類'],
   ['favorites', '收藏'],
   ['history', '觀看紀錄'],
+  ['downloads', '下載'],
   ['settings', '設定'],
 ]
 let stack = []
 let cur = null
 
 function renderTabs() {
-  $('#tabs').replaceChildren(...TABS.map(([k, label]) => h('button', { class: `tab${cur?.tab === k ? ' active' : ''}`, 'data-tab': k, onclick: () => nav(k, {}, { root: true }) }, label)))
+  $('#tabs').replaceChildren(
+    ...TABS.map(([k, label]) => h('button', { class: `tab${cur?.tab === k ? ' active' : ''}`, 'data-tab': k, onclick: () => nav(k, {}, { root: true }) }, label, k === 'downloads' ? h('span', { class: 'badge', id: 'dlBadge' }) : null)),
+  )
+  updateDlBadge()
 }
 
 /** 開新頁面；root = 從上方分頁點進來（清掉返回紀錄） */
@@ -417,7 +421,26 @@ const PAGES = {
     return { el: h('div', { class: 'page' }, pageHead('觀看紀錄', clear), body), show: draw }
   },
 
+  downloads() {
+    const list = h('div', { class: 'dl-list' })
+    const dirText = h('span', { class: 'muted' })
+    window.hub.dl.dir().then((d) => (dirText.textContent = d))
+    const draw = () => {
+      const all = [...jobs.values()].sort((a, b) => b.addedAt - a.addedAt)
+      list.replaceChildren(...(all.length ? all.map(dlRow) : [status('還沒有下載，在影片頁按「下載」加入')]))
+    }
+    draw()
+    const unsub = onJobs(draw)
+    return {
+      el: h('div', { class: 'page' }, pageHead('下載', h('button', { class: 'btn', onclick: () => window.hub.dl.openDir() }, '開啟資料夾')), h('div', { class: 'dl-dir' }, '下載位置：', dirText), list),
+      show: draw,
+      dispose: unsub,
+    }
+  },
+
   settings() {
+    const dlDir = h('span', { class: 'muted' })
+    window.hub.dl.dir().then((d) => (dlDir.textContent = d))
     const ver = h('b', {}, '…')
     window.hub.version().then((v) => (ver.textContent = `v${v}`))
     const input = h('input', { class: 'text-input', type: 'text', spellcheck: false, placeholder: 'https://…' })
@@ -447,6 +470,19 @@ const PAGES = {
           h('h2', {}, '網址設定'),
           h('div', { class: 'muted small' }, '網站換網址時，在這裡改成新網址。'),
           h('div', { class: 'row' }, input, h('button', { class: 'btn primary', onclick: () => saveBase(input.value) }, '儲存'), h('button', { class: 'btn', onclick: () => saveBase('') }, '還原預設'), note),
+        ),
+        h(
+          'section',
+          {},
+          h('h2', {}, '下載'),
+          h('div', { class: 'row' }, '下載位置：', dlDir),
+          h(
+            'div',
+            { class: 'row' },
+            h('button', { class: 'btn', onclick: async () => (dlDir.textContent = await window.hub.dl.chooseDir()) }, '變更位置'),
+            h('button', { class: 'btn', onclick: () => window.hub.dl.openDir() }, '開啟資料夾'),
+          ),
+          h('div', { class: 'muted small' }, '下載的影片會轉成 MP4，任何播放器都能開；預設放在程式資料夾裡的 downloads。'),
         ),
         h('section', {}, h('h2', {}, '版本'), h('div', { class: 'row' }, ver, h('button', { class: 'btn', onclick: () => window.hub.checkUpdate() }, '檢查更新'))),
         h(
@@ -488,6 +524,26 @@ const PAGES = {
       drawFav()
     }
     drawFav()
+    const dlBtn = h('button', { class: 'btn' })
+    const drawDl = () => {
+      const j = jobs.get(v.id)
+      if (!j) dlBtn.textContent = '⬇ 下載'
+      else if (j.status === 'done') dlBtn.textContent = j.missing ? '⬇ 重新下載（檔案已刪除）' : '✓ 已下載・開啟資料夾'
+      else if (j.status === 'running') dlBtn.textContent = `下載中 ${pct(j)}%`
+      else if (j.status === 'merging') dlBtn.textContent = '轉成 MP4 中…'
+      else if (j.status === 'queued') dlBtn.textContent = '排隊中…'
+      else if (j.status === 'paused') dlBtn.textContent = `▶ 繼續下載（${pct(j)}%）`
+      else dlBtn.textContent = '下載失敗・重試'
+    }
+    dlBtn.onclick = () => {
+      const j = jobs.get(v.id)
+      if (j?.status === 'done' && !j.missing) return window.hub.dl.show(j.id)
+      if (j && (j.status === 'paused' || j.status === 'error')) return window.hub.dl.resume(j.id)
+      if (j && j.status !== 'done') return nav('downloads', {}, { root: true })
+      startDownload(d?.video || v)
+    }
+    drawDl()
+    const unsub = onJobs(drawDl)
 
     async function load() {
       actions.replaceChildren(loading())
@@ -499,7 +555,7 @@ const PAGES = {
         meta.textContent = [x.code, x.duration ? fmtTime(x.duration) : '', x.res ? `${x.res}P` : '', `${fmtCount(x.views)} 次觀看`, fmtDate(x.date)].filter(Boolean).join('・')
         const resume = getPos(x.id)
         const queue = d.episodes.length ? d.episodes.map((e) => ({ ...e, seriesId: d.series?.id })) : null
-        actions.replaceChildren(h('button', { class: 'btn primary big', onclick: () => openPlayer(x, { queue, series: d.series }) }, resume > 5 ? `▶ 繼續播放（${fmtTime(resume)}）` : '▶ 播放'), favBtn)
+        actions.replaceChildren(h('button', { class: 'btn primary big', onclick: () => openPlayer(x, { queue, series: d.series }) }, resume > 5 ? `▶ 繼續播放（${fmtTime(resume)}）` : '▶ 播放'), dlBtn, favBtn)
         tags.replaceChildren(...x.tags.map(tagChip))
         extra.replaceChildren(
           d.series
@@ -522,6 +578,7 @@ const PAGES = {
       el: h('div', { class: 'page' }, h('div', { class: 'video-page' }, cover, h('div', { class: 'vp-info' }, title, meta, actions, tags)), extra),
       // 從播放器回來：更新「繼續播放」的時間
       show: () => d && load(),
+      dispose: unsub,
     }
   },
 
@@ -599,6 +656,111 @@ function episodeList(eps, current, onPick) {
   )
 }
 
+// ---------- 下載 ----------
+
+const jobs = new Map()
+const jobListeners = new Set()
+const pct = (j) => (j.total ? Math.floor((j.done * 100) / j.total) : 0)
+const fmtSize = (b) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(2)} GB` : `${Math.round(b / (1 << 20))} MB`)
+
+function onJobs(fn) {
+  jobListeners.add(fn)
+  return () => jobListeners.delete(fn)
+}
+function jobsChanged() {
+  for (const fn of jobListeners) fn()
+  updateDlBadge()
+}
+function updateDlBadge() {
+  const n = [...jobs.values()].filter((j) => ['running', 'queued', 'merging'].includes(j.status)).length
+  const b = $('#dlBadge')
+  if (b) b.textContent = n ? String(n) : ''
+}
+
+/** 下載好的 MP4（瀏覽器播得動）；沒有就回傳空字串 */
+function localFile(id) {
+  const j = jobs.get(id)
+  return j?.status === 'done' && !j.missing && /\.mp4$/i.test(j.file || '') ? j.fileUrl : ''
+}
+
+async function startDownload(v) {
+  try {
+    const j = await window.hub.dl.add({ id: v.id, title: v.title, cover: v.cover, duration: v.duration })
+    jobs.set(j.id, j)
+    jobsChanged()
+    toast(`已加入下載：${v.title}`)
+  } catch (e) {
+    toast(`無法下載：${errText(e)}`, 5000)
+  }
+}
+
+window.hub.dl.list().then((list) => {
+  for (const j of list) jobs.set(j.id, j)
+  jobsChanged()
+})
+window.hub.dl.onUpdate((j) => {
+  const prev = jobs.get(j.id)
+  jobs.set(j.id, j)
+  if (prev && prev.status !== j.status) {
+    if (j.status === 'done') toast(`下載完成：${j.title}${j.note ? '（' + j.note + '）' : ''}`)
+    if (j.status === 'error') toast(`下載失敗：${j.title}，${j.error}`, 5000)
+  }
+  jobsChanged()
+})
+window.hub.dl.onRemoved((id) => {
+  jobs.delete(id)
+  jobsChanged()
+})
+
+function dlRow(j) {
+  const done = j.status === 'done'
+  const statusText =
+    {
+      running: `下載中 ${pct(j)}%・${fmtSize(j.bytes || 0)}${j.speed ? `・${(j.speed / (1 << 20)).toFixed(1)} MB/s` : ''}`,
+      queued: '排隊中',
+      merging: '轉成 MP4 中…',
+      paused: `已暫停 ${pct(j)}%・${fmtSize(j.bytes || 0)}`,
+      error: `失敗：${j.error || '未知錯誤'}`,
+      done: j.missing ? '檔案已被刪除' : `${fmtSize(j.size || j.bytes || 0)}${j.note ? `・${j.note}` : ''}`,
+    }[j.status] || j.status
+  const v = { id: j.id, title: j.title, cover: j.cover, duration: j.duration }
+  const btns = []
+  if (done && !j.missing) {
+    btns.push(h('button', { class: 'btn primary', onclick: () => openPlayer(v) }, '▶ 播放'))
+    btns.push(h('button', { class: 'btn', onclick: () => window.hub.dl.show(j.id) }, '顯示檔案'))
+  }
+  if (j.status === 'running' || j.status === 'queued') btns.push(h('button', { class: 'btn', onclick: () => window.hub.dl.pause(j.id) }, '暫停'))
+  if (j.status === 'paused' || j.status === 'error') btns.push(h('button', { class: 'btn', onclick: () => window.hub.dl.resume(j.id) }, '繼續'))
+  btns.push(
+    h(
+      'button',
+      {
+        class: 'btn',
+        onclick: () => {
+          if (done && !j.missing) {
+            if (!confirm(`刪除「${j.title}」？（影片檔也會一起刪掉）`)) return
+            window.hub.dl.remove(j.id, true)
+          } else window.hub.dl.remove(j.id, false)
+        },
+      },
+      done ? '刪除' : '取消',
+    ),
+  )
+  return h(
+    'div',
+    { class: `dl-row ${j.status}` },
+    h('div', { class: 'dl-thumb', onclick: () => openVideo(v) }, j.cover ? h('img', { src: j.cover, alt: '' }) : null),
+    h(
+      'div',
+      { class: 'dl-main' },
+      h('div', { class: 'dl-title' }, j.title),
+      h('div', { class: `dl-status${j.status === 'error' ? ' error' : ''}` }, statusText),
+      done ? null : h('div', { class: 'bar' }, h('div', { style: { width: `${pct(j)}%` } })),
+    ),
+    h('div', { class: 'dl-btns' }, btns),
+  )
+}
+
 function openVideo(v) {
   nav('video', v)
 }
@@ -669,7 +831,13 @@ function openPlayer(video, { queue = null, series = null } = {}) {
     err.replaceChildren(h('div', {}, msg), h('button', { class: 'btn', onclick: () => openPlayer(video, { queue, series }) }, '重試'))
     err.classList.remove('hidden')
   }
-  if (window.Hls?.isSupported()) {
+  const local = localFile(video.id)
+  if (local) {
+    v.src = local
+    v.addEventListener('loadedmetadata', () => start > 5 && start < v.duration - 5 && (v.currentTime = start), { once: true })
+    v.addEventListener('error', () => showError('下載的檔案無法播放（可能已被移動或刪除）'))
+    flash('播放已下載的檔案')
+  } else if (window.Hls?.isSupported()) {
     const hls = new window.Hls({ maxBufferLength: 60, startPosition: start > 5 ? start : -1 })
     p.hls = hls
     let netRetry = 0
@@ -933,4 +1101,4 @@ window.addEventListener('beforeunload', () => player?.savePos?.())
 nav('home', {}, { root: true })
 
 // 測試用
-window.__app = { nav, goBack, openVideo, openPlayer, closePlayer, get player() { return player } }
+window.__app = { nav, goBack, openVideo, openPlayer, closePlayer, jobs, startDownload, get player() { return player } }

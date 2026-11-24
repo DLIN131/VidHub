@@ -4,6 +4,7 @@ const site = require('./site')
 const source = require('./source')
 const state = require('./state')
 const updater = require('./updater')
+const downloads = require('./downloads')
 
 const APP_NAME = 'VidHub'
 app.userAgentFallback = source.UA
@@ -151,6 +152,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     Menu.setApplicationMenu(null)
     state.setup()
+    downloads.setup()
     source.setupProtocol()
     setupIpc()
     createWindow()

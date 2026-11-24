@@ -14,13 +14,20 @@ import com.vidhub.core.Video
 sealed class Route {
     abstract val key: String
 
+    /** 每次開的頁面都有自己的編號：同一部影片開第二次（A → B → A）時，兩頁的畫面狀態才不會混在一起 */
+    val seq = ++opened
+
+    private companion object {
+        var opened = 0
+    }
+
     data object Main : Route() {
         override val key = "main"
     }
 
     /** 某個分類（標籤）的影片 */
     class Tag(val tag: String, order: String = "createdAt") : Route() {
-        override val key = "tag:$tag"
+        override val key = "tag:$tag#$seq"
         var order by mutableStateOf(order)
         var siblings by mutableStateOf(listOf<String>())
         var total by mutableIntStateOf(0)
@@ -41,12 +48,12 @@ sealed class Route {
 
     /** 劇集列表（從首頁「更多」或劇集頁的類型標籤進來） */
     class SeriesList(val title: String, filter: String = "all", sort: String = "updated", tag: String = "") : Route() {
-        override val key = "series:$title"
+        override val key = "series:$title#$seq"
         val state = SeriesState(filter, sort, tag)
     }
 
     class Search(val query: String) : Route() {
-        override val key = "search:$query"
+        override val key = "search:$query#$seq"
         var tab by mutableStateOf("video")
         var cat by mutableStateOf("")
         var sort by mutableStateOf("")
@@ -70,18 +77,18 @@ sealed class Route {
     }
 
     class VideoPage(val preview: Video) : Route() {
-        override val key = "video:${preview.id}"
+        override val key = "video:${preview.id}#$seq"
         val detail = Loader { Api.videoDetail(preview.id) }
     }
 
     class ShowPage(val preview: Series) : Route() {
-        override val key = "show:${preview.id}"
+        override val key = "show:${preview.id}#$seq"
         val detail = Loader { Api.seriesDetail(preview.id) }
     }
 
     /** queue：劇集的所有集（看完自動播下一集），series：所屬劇集 */
     class Player(val video: Video, val queue: List<Video> = emptyList(), val series: Series? = null) : Route() {
-        override val key = "player:${video.id}"
+        override val key = "player:${video.id}#$seq"
     }
 }
 

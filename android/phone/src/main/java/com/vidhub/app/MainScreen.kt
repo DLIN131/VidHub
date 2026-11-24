@@ -232,7 +232,7 @@ private fun LibraryTab() {
     Column(Modifier.fillMaxSize()) {
         AppBar("我的")
         TabRow(selectedTabIndex = MainState.libraryTab, containerColor = Background, contentColor = Accent) {
-            listOf("收藏", "觀看紀錄", "設定").forEachIndexed { i, name ->
+            listOf("收藏", "觀看紀錄", "下載", "設定").forEachIndexed { i, name ->
                 Tab(
                     selected = MainState.libraryTab == i,
                     onClick = { MainState.libraryTab = i },
@@ -248,6 +248,7 @@ private fun LibraryTab() {
                 }
                 SavedGrid(Store.history, "還沒有觀看紀錄")
             }
+            2 -> DownloadList()
             else -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 SettingRow("網址設定", Site.base + if (Site.isDefaultBase) "（預設）" else "") { urlDialog = true }
                 SettingRow("檢查更新", "目前版本 ${Updater.currentVersionName(activity)}") { UpdateDialog.checkManually(activity) }

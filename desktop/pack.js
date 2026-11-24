@@ -13,7 +13,8 @@ packager({
   arch: 'x64',
   out,
   overwrite: true,
-  asar: true,
+  // ffmpeg.exe 不能放在 asar 裡執行
+  asar: { unpack: '**/*.exe' },
   icon: path.join(__dirname, 'icon.ico'),
   appVersion: version,
   // 程式裡的 app.getVersion() 讀的是打包進去的 package.json，不是 exe 的版本資訊；
@@ -29,7 +30,7 @@ packager({
   ],
   win32metadata: { CompanyName: 'VidHub', FileDescription: 'VidHub', ProductName: 'VidHub' },
   // 只排除專案根目錄的東西（路徑以 / 開頭、相對於專案資料夾）
-  ignore: [/^\/dist($|\/)/, /^\/out($|\/)/, /^\/tools($|\/)/, /^\/pack\.js$/, /^\/\.gitignore$/],
+  ignore: [/^\/dist($|\/)/, /^\/out($|\/)/, /^\/downloads($|\/)/, /^\/tools($|\/)/, /^\/pack\.js$/, /^\/\.gitignore$/],
 })
   .then(([appPath]) => {
     // Chromium 介面語言檔只留中文和英文（其他語言約 40 MB，程式用不到）

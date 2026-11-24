@@ -20,6 +20,7 @@ class App : Application(), ImageLoaderFactory {
         isTv = packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) || packageName.endsWith(".tv")
         Site.init(this)
         Store.init(this)
+        Downloads.init(this)
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)

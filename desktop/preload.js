@@ -16,4 +16,18 @@ contextBridge.exposeInMainWorld('hub', {
   version: () => ipcRenderer.invoke('app:version'),
   checkUpdate: () => ipcRenderer.invoke('update:check'),
   onBack: (fn) => ipcRenderer.on('nav:back', () => fn()),
+  // 下載（見 downloads.js）
+  dl: {
+    list: () => ipcRenderer.invoke('dl:list'),
+    add: (v) => ipcRenderer.invoke('dl:add', v),
+    pause: (id) => ipcRenderer.invoke('dl:pause', id),
+    resume: (id) => ipcRenderer.invoke('dl:resume', id),
+    remove: (id, deleteFile) => ipcRenderer.invoke('dl:remove', id, deleteFile),
+    show: (id) => ipcRenderer.invoke('dl:show', id),
+    dir: () => ipcRenderer.invoke('dl:dir'),
+    chooseDir: () => ipcRenderer.invoke('dl:chooseDir'),
+    openDir: () => ipcRenderer.invoke('dl:openDir'),
+    onUpdate: (fn) => ipcRenderer.on('dl:update', (_e, j) => fn(j)),
+    onRemoved: (fn) => ipcRenderer.on('dl:removed', (_e, id) => fn(id)),
+  },
 })
